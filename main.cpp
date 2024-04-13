@@ -2,10 +2,11 @@
 #include <format>
 #include <fstream>
 #include <iostream>
-#include <string>
-#include <string_view>
-#include <map>
 #include <limits>
+#include <map>
+#include <stdio.h>
+#include <string_view>
+#include <string>
 
 // Thanks, I hate it
 #define WIN32_LEAN_AND_MEAN
@@ -13,6 +14,11 @@
 #include <Windows.h>
 
 using namespace std::chrono;
+
+enum class ReadState {
+    NAME,
+    TEMPERATURE,
+};
 
 struct Station {
     double sum = 0;
@@ -30,22 +36,54 @@ int main(int argc, const char* argv[])
 
     auto start = steady_clock::now();
 
-    std::ifstream fs("measurements.txt", std::ios::binary);
+    // Let's raw dog some C; read the entire file into a buffer (we got RAM)
+    FILE* f = nullptr;
+    fopen_s(&f, "measurements.txt", "rb");
+    fseek(f, 0, SEEK_END);
+    long long size = _ftelli64(f);
+    std::cout << "Allocating " << size << " bytes" << std::endl;
+    char* data = new char[size];
+    rewind(f);
+    fread(data, sizeof(char), size, f);
+
+    // Still keeping track of every weather station in a map
     std::map<std::string, Station> stations;
 
-    for (std::string line; std::getline(fs, line);) {
-        size_t delim_pos = line.find(';');
-        std::string_view name(line.data(), delim_pos);
-        std::string_view value(line.data() + delim_pos + 1);
+    // Loop over characters using a state machine
+    ReadState state = ReadState::NAME;
+    std::string name_buffer;
+    std::string value_buffer;
+    for (long long i = 0; i < size; ++i) {
+        switch (state) {
+        case ReadState::NAME: {
+            if (data[i] == ';') {
+                state = ReadState::TEMPERATURE;
+                continue;
+            }
+            name_buffer += data[i];
+            break;
+        }
+        case ReadState::TEMPERATURE: {
+            if (data[i] == '\n') {
+                double v;
+                std::from_chars(value_buffer.data(), value_buffer.data() + value_buffer.size(), v);
 
-        double v;
-        std::from_chars(value.data(), value.data() + value.size(), v);
+                auto& station = stations[name_buffer];
+                station.sum += v;
+                station.count++;
+                station.min = std::min(v, station.min);
+                station.max = std::max(v, station.max);
 
-        auto& station = stations[std::string(name)];
-        station.sum += v;
-        station.count++;
-        station.min = std::min(v, station.min);
-        station.max = std::max(v, station.max);
+                // Prepare for next line
+                name_buffer.clear();
+                value_buffer.clear();
+                state = ReadState::NAME;
+                continue;
+            }
+            value_buffer += data[i];
+            break;
+        }
+        }
     }
 
     std::cout << '{';
@@ -55,6 +93,7 @@ int main(int argc, const char* argv[])
         delim = ", ";
     }
     std::cout << "}\n\n";
+
     std::cout << std::format("Elapsed time: {}\n", duration_cast<milliseconds>(steady_clock::now() - start));
 
     return 0;
