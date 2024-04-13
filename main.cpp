@@ -3,11 +3,11 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
-#include <map>
 #include <ranges>
 #include <stdio.h>
 #include <string_view>
 #include <string>
+#include <unordered_map>
 
 // Thanks, I hate it
 #define WIN32_LEAN_AND_MEAN
@@ -97,7 +97,7 @@ int main(int argc, const char* argv[]) {
     std::cout << "File loaded" << std::endl;
 
     // Still keeping track of every weather station in a map
-    std::map<std::string, Station> stations;
+    std::unordered_map<std::string, Station> stations;
 
     // Loop over characters using a state machine
     ReadState state = ReadState::NAME;
