@@ -4,6 +4,7 @@
 #include <iostream>
 #include <limits>
 #include <map>
+#include <ranges>
 #include <stdio.h>
 #include <string_view>
 #include <string>
@@ -27,8 +28,47 @@ struct Station {
     double max = std::numeric_limits<double>::lowest();
 };
 
-int main(int argc, const char* argv[])
-{
+static double parse_number(const std::string& str) {
+    if (str.empty()) {
+        return 0; // whatever for the purposes of this project
+    }
+
+    const char* data = str.data();
+    size_t data_size = str.size();
+    int sign = 1;
+    if (data[0] == '-') {
+        sign = -1;
+        ++data;
+        --data_size;
+    }
+
+    static std::vector<int> v; // static for speed, reuse the same vector every time
+    v.clear();
+    int e = 0;
+    bool seen_dot = false;
+    for (size_t i = 0; i < data_size; ++i) {
+        if (data[i] == '.') {
+            seen_dot = true;
+            continue;
+        }
+        if (!seen_dot) {
+            v.push_back(data[i] - 48);
+        }
+        else {
+            e = data[i] - 48;
+        }
+    }
+    
+    double result = 0;
+    int i = 0;
+    for (auto& num : v | std::views::reverse) {
+        result += num * pow(10, i++);
+    }
+    result += e * 0.1;
+    return result * sign;
+}
+
+int main(int argc, const char* argv[]) {
     // Shut up warnings!
     argc; argv;
 
@@ -43,8 +83,10 @@ int main(int argc, const char* argv[])
     long long size = _ftelli64(f);
     std::cout << "Allocating " << size << " bytes" << std::endl;
     char* data = new char[size];
+    std::cout << "Reading file" << std::endl;
     rewind(f);
     fread(data, sizeof(char), size, f);
+    std::cout << "File loaded" << std::endl;
 
     // Still keeping track of every weather station in a map
     std::map<std::string, Station> stations;
@@ -65,8 +107,7 @@ int main(int argc, const char* argv[])
         }
         case ReadState::TEMPERATURE: {
             if (data[i] == '\n') {
-                double v;
-                std::from_chars(value_buffer.data(), value_buffer.data() + value_buffer.size(), v);
+                double v = parse_number(value_buffer);
 
                 auto& station = stations[name_buffer];
                 station.sum += v;
