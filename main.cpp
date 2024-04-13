@@ -28,6 +28,14 @@ struct Station {
     double max = std::numeric_limits<double>::lowest();
 };
 
+static double pow(int base, int exp) {
+    int result = 1;
+    for (int i = 0; i < exp; ++i) {
+        result *= base;
+    }
+    return result;
+}
+
 static double parse_number(const std::string& str) {
     if (str.empty()) {
         return 0; // whatever for the purposes of this project
