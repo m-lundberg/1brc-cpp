@@ -52,6 +52,7 @@ static double parse_number(const std::string& str) {
 
     static std::vector<int> v; // static for speed, reuse the same vector every time
     v.clear();
+    v.resize(data_size - 2); // only non-fractional part
     int e = 0;
     bool seen_dot = false;
     for (size_t i = 0; i < data_size; ++i) {
@@ -60,7 +61,7 @@ static double parse_number(const std::string& str) {
             continue;
         }
         if (!seen_dot) {
-            v.push_back(data[i] - 48);
+            v[i] = data[i] - 48;
         }
         else {
             e = data[i] - 48;
@@ -68,9 +69,9 @@ static double parse_number(const std::string& str) {
     }
     
     double result = 0;
-    int i = 0;
-    for (auto& num : v | std::views::reverse) {
-        result += num * pow(10, i++);
+    int i = data_size - 2;
+    for (auto& num : v) {
+        result += num * pow(10, --i);
     }
     result += e * 0.1;
     return result * sign;
@@ -94,7 +95,7 @@ int main(int argc, const char* argv[]) {
     std::cout << "Reading file" << std::endl;
     rewind(f);
     fread(data, sizeof(char), size, f);
-    std::cout << "File loaded" << std::endl;
+    std::cout << std::format("File loaded in {}\n", duration_cast<milliseconds>(steady_clock::now() - start));
 
     // Still keeping track of every weather station in a map
     std::unordered_map<std::string, Station> stations;
