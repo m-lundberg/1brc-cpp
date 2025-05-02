@@ -124,17 +124,29 @@ int main(int argc, const char* argv[]) {
 
     auto start = steady_clock::now();
 
-    // Let's raw dog some C; read the entire file into a buffer (we got RAM)
-    FILE* f = nullptr;
-    fopen_s(&f, "measurements.txt", "rb");
-    fseek(f, 0, SEEK_END);
-    long long size = _ftelli64(f);
-    std::cout << "Allocating " << size << " bytes" << std::endl;
-    char* data = new char[size];
-    std::cout << "Reading file" << std::endl;
-    rewind(f);
-    fread(data, sizeof(char), size, f);
-    std::cout << std::format("File loaded in {}\n", duration_cast<milliseconds>(steady_clock::now() - start));
+    // Create a memory-mapped file view
+    HANDLE hfile = CreateFileA("measurements.txt", GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (hfile == INVALID_HANDLE_VALUE) {
+        std::cerr << "Failed to open file\n";
+        return 1;
+    }
+    HANDLE hmap = CreateFileMappingA(hfile, nullptr, PAGE_READONLY, 0, 0, nullptr);
+    if (!hmap) {
+        std::cerr << "Failed to create file mapping\n";
+        CloseHandle(hfile);
+        return 1;
+    }
+    const char* data = static_cast<const char*>(MapViewOfFile(hmap, FILE_MAP_READ, 0, 0, 0));
+    if (!data) {
+        std::cerr << "Failed to create file view\n";
+        CloseHandle(hmap);
+        CloseHandle(hfile);
+        return 1;
+    }
+
+    LARGE_INTEGER file_size;
+    GetFileSizeEx(hfile, &file_size);
+    size_t size = static_cast<size_t>(file_size.QuadPart);
 
     const unsigned num_threads = std::thread::hardware_concurrency();
 
@@ -189,6 +201,10 @@ int main(int argc, const char* argv[]) {
         delim = ", ";
     }
     std::cout << "}\n\n";
+
+    UnmapViewOfFile(data);
+    CloseHandle(hmap);
+    CloseHandle(hfile);
 
     std::cout << std::format("Elapsed time: {}\n", duration_cast<milliseconds>(steady_clock::now() - start));
 
