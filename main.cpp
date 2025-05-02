@@ -17,16 +17,18 @@
 
 using namespace std::chrono;
 
-enum class ReadState {
-    NAME,
-    TEMPERATURE,
-};
-
 struct Station {
     double sum = 0;
     uint64_t count = 0;
     double min = std::numeric_limits<double>::max();
     double max = std::numeric_limits<double>::lowest();
+
+    void update(double value) {
+        sum += value;
+        count++;
+        min = std::min(value, min);
+        max = std::max(value, max);
+    }
 };
 
 static double pow(int base, int exp) {
@@ -37,7 +39,7 @@ static double pow(int base, int exp) {
     return result;
 }
 
-static double parse_number(const std::string& str) {
+static double parse_number(const std::string_view str) {
     if (str.empty()) {
         return 0; // whatever for the purposes of this project
     }
@@ -105,39 +107,19 @@ int main(int argc, const char* argv[]) {
     // Still keeping track of every weather station in a map
     std::unordered_map<std::string, Station> stations;
 
-    // Loop over characters using a state machine
-    ReadState state = ReadState::NAME;
-    std::string name_buffer;
-    std::string value_buffer;
+    size_t line_start = 0;
     for (long long i = 0; i < size; ++i) {
-        switch (state) {
-        case ReadState::NAME: {
-            if (data[i] == ';') {
-                state = ReadState::TEMPERATURE;
-                continue;
-            }
-            name_buffer += data[i];
-            break;
-        }
-        case ReadState::TEMPERATURE: {
-            if (data[i] == '\n') {
-                double v = parse_number(value_buffer);
+        if (data[i] == '\n') {
+            std::string_view line(data + line_start, i - line_start);
 
-                auto& station = stations[name_buffer];
-                station.sum += v;
-                station.count++;
-                station.min = std::min(v, station.min);
-                station.max = std::max(v, station.max);
+            size_t delim_pos = line.find(';');
+            std::string_view name(line.data(), delim_pos);
+            std::string_view value(line.data() + delim_pos + 1, i - line_start - delim_pos - 1);
 
-                // Prepare for next line
-                name_buffer.clear();
-                value_buffer.clear();
-                state = ReadState::NAME;
-                continue;
-            }
-            value_buffer += data[i];
-            break;
-        }
+            double v = parse_number(value);
+            stations[std::string(name)].update(v);
+
+            line_start = i + 1;
         }
     }
 
