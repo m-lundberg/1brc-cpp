@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string_view>
 #include <string>
+#include <thread>
 #include <unordered_map>
 
 // Thanks, I hate it
@@ -28,6 +29,13 @@ struct Station {
         count++;
         min = std::min(value, min);
         max = std::max(value, max);
+    }
+
+    void merge(const Station& other) {
+        sum += other.sum;
+        count += other.count;
+        min = std::min(min, other.min);
+        max = std::max(max, other.max);
     }
 };
 
@@ -57,7 +65,7 @@ static double parse_number(const std::string_view str) {
         return 0;
     }
 
-    static std::vector<int> v; // static for speed, reuse the same vector every time
+    static thread_local std::vector<int> v; // static for speed, reuse the same vector every time
     v.clear();
     v.resize(data_size - 2); // only non-fractional part
     int e = 0;
@@ -68,10 +76,10 @@ static double parse_number(const std::string_view str) {
             continue;
         }
         if (!seen_dot) {
-            v[i] = data[i] - 48;
+            v[i] = data[i] - '0';
         }
         else {
-            e = data[i] - 48;
+            e = data[i] - '0';
         }
     }
 
@@ -82,6 +90,30 @@ static double parse_number(const std::string_view str) {
     }
     result += e * 0.1;
     return result * sign;
+}
+
+std::unordered_map<std::string, Station> process_chunk(const char* data, size_t start, size_t end) {
+    std::unordered_map<std::string, Station> result;
+    size_t line_start = start;
+    for (size_t i = start; i < end; ++i) {
+        if (data[i] != '\n') {
+            continue;
+        }
+
+        // We have read a complete line, process it
+        std::string_view line(data + line_start, i - line_start);
+
+        size_t delim_pos = line.find(';');
+        std::string_view name(line.data(), delim_pos);
+        std::string_view value(line.data() + delim_pos + 1, i - line_start - delim_pos - 1);
+
+        double v = parse_number(value);
+        result[std::string(name)].update(v);
+
+        line_start = i + 1;
+    }
+
+    return result;
 }
 
 int main(int argc, const char* argv[]) {
@@ -104,22 +136,40 @@ int main(int argc, const char* argv[]) {
     fread(data, sizeof(char), size, f);
     std::cout << std::format("File loaded in {}\n", duration_cast<milliseconds>(steady_clock::now() - start));
 
-    // Still keeping track of every weather station in a map
+    const unsigned num_threads = std::thread::hardware_concurrency();
+
+    // Find chunk boundaries by splitting the data by whole rows
+    std::vector<size_t> chunk_starts(num_threads + 1);
+    chunk_starts[0] = 0;
+    for (unsigned i = 1; i < num_threads; ++i) {
+        // Find the approximate position
+        size_t start_pos = size * i / num_threads;
+
+        // Advance to next line break
+        while (start_pos < size && data[start_pos] != '\n') {
+            ++start_pos;
+        }
+        chunk_starts[i] = start_pos + 1; // One pos past the '\n'
+    }
+    chunk_starts[num_threads] = size;
+
+    // Process each chunk in its own thread
+    std::vector<std::thread> threads;
+    std::vector<std::unordered_map<std::string, Station>> partial_results(num_threads);
+    for (unsigned i = 0; i < num_threads; ++i) {
+        threads.emplace_back([&, i]() {
+            partial_results[i] = process_chunk(data, chunk_starts[i], chunk_starts[i + 1]);
+        });
+    }
+    for (auto& t : threads) {
+        t.join();
+    }
+
+    // Merge the results into one final map
     std::unordered_map<std::string, Station> stations;
-
-    size_t line_start = 0;
-    for (long long i = 0; i < size; ++i) {
-        if (data[i] == '\n') {
-            std::string_view line(data + line_start, i - line_start);
-
-            size_t delim_pos = line.find(';');
-            std::string_view name(line.data(), delim_pos);
-            std::string_view value(line.data() + delim_pos + 1, i - line_start - delim_pos - 1);
-
-            double v = parse_number(value);
-            stations[std::string(name)].update(v);
-
-            line_start = i + 1;
+    for (const auto& partial : partial_results) {
+        for (const auto& [name, station] : partial) {
+            stations[name].merge(station);
         }
     }
 
