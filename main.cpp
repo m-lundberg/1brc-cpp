@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <format>
 #include <fstream>
@@ -50,6 +51,10 @@ static double parse_number(const std::string& str) {
         --data_size;
     }
 
+    if (data_size < 2) {
+        return 0;
+    }
+
     static std::vector<int> v; // static for speed, reuse the same vector every time
     v.clear();
     v.resize(data_size - 2); // only non-fractional part
@@ -67,9 +72,9 @@ static double parse_number(const std::string& str) {
             e = data[i] - 48;
         }
     }
-    
+
     double result = 0;
-    int i = data_size - 2;
+    int i = static_cast<int>(data_size - 2);
     for (auto& num : v) {
         result += num * pow(10, --i);
     }
@@ -136,9 +141,18 @@ int main(int argc, const char* argv[]) {
         }
     }
 
+    // Sort output alphabetically
+    std::vector<std::string> names;
+    names.reserve(stations.size());
+    for (const auto& [key, _] : stations) {
+        names.push_back(key);
+    }
+    std::sort(names.begin(), names.end());
+
     std::cout << '{';
     const char* delim = "";
-    for (const auto& [name, station] : stations) {
+    for (const auto& name : names) {
+        const auto& station = stations[name];
         std::cout << std::format("{}{}={:.1f}/{:.1f}/{:.1f}", delim, name, station.min, station.sum / station.count, station.max);
         delim = ", ";
     }
