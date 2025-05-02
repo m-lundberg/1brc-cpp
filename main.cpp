@@ -39,57 +39,36 @@ struct Station {
     }
 };
 
-static double pow(int base, int exp) {
-    int result = 1;
-    for (int i = 0; i < exp; ++i) {
-        result *= base;
-    }
-    return result;
-}
-
-static double parse_number(const std::string_view str) {
+static double parse_number(std::string_view str) {
     if (str.empty()) {
         return 0; // whatever for the purposes of this project
     }
 
-    const char* data = str.data();
-    size_t data_size = str.size();
     int sign = 1;
-    if (data[0] == '-') {
+    if (str[0] == '-') {
         sign = -1;
-        ++data;
-        --data_size;
+        str.remove_prefix(1);
     }
 
-    if (data_size < 2) {
-        return 0;
-    }
-
-    static thread_local std::vector<int> v; // static for speed, reuse the same vector every time
-    v.clear();
-    v.resize(data_size - 2); // only non-fractional part
-    int e = 0;
+    int64_t integer = 0;
+    int64_t decimal = 0;
     bool seen_dot = false;
-    for (size_t i = 0; i < data_size; ++i) {
-        if (data[i] == '.') {
+
+    for (char c : str) {
+        if (c == '.') {
             seen_dot = true;
             continue;
         }
+
         if (!seen_dot) {
-            v[i] = data[i] - '0';
-        }
-        else {
-            e = data[i] - '0';
+            integer = integer * 10 + (c - '0');
+        } else {
+            decimal = c - '0';
+            break;
         }
     }
 
-    double result = 0;
-    int i = static_cast<int>(data_size - 2);
-    for (auto& num : v) {
-        result += num * pow(10, --i);
-    }
-    result += e * 0.1;
-    return result * sign;
+    return sign * (integer + decimal / 10.0);
 }
 
 std::unordered_map<std::string, Station> process_chunk(const char* data, size_t start, size_t end) {
