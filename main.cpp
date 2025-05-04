@@ -16,12 +16,12 @@
 using namespace std::chrono;
 
 struct Station {
-    double sum = 0;
+    int64_t sum = 0;
     uint64_t count = 0;
-    double min = std::numeric_limits<double>::max();
-    double max = std::numeric_limits<double>::lowest();
+    int64_t min = std::numeric_limits<int64_t>::max();
+    int64_t max = std::numeric_limits<int64_t>::lowest();
 
-    void update(double value) {
+    void update(int64_t value) {
         sum += value;
         count++;
         min = std::min(value, min);
@@ -36,7 +36,7 @@ struct Station {
     }
 };
 
-static double parse_number(std::string_view str) {
+static int64_t parse_number(std::string_view str) {
     if (str.empty()) {
         return 0; // whatever for the purposes of this project
     }
@@ -47,25 +47,17 @@ static double parse_number(std::string_view str) {
         str.remove_prefix(1);
     }
 
-    int64_t integer = 0;
-    int64_t decimal = 0;
-    bool seen_dot = false;
-
-    for (char c : str) {
-        if (c == '.') {
-            seen_dot = true;
-            continue;
-        }
-
-        if (!seen_dot) {
-            integer = integer * 10 + (c - '0');
-        } else {
-            decimal = c - '0';
-            break;
-        }
+    // Take advantage of the fact that the non-fractional part can only be 1 or 2 numbers
+    int64_t result = 0;
+    if (str.size() == 3) {
+        // E.g. 1.2
+        result = (str[0] - '0') * 10;
+    } else if (str.size() == 4) {
+        // E.g. 12.3
+        result = (str[0] - '0') * 100 + (str[1] - '0') * 10;
     }
-
-    return sign * (integer + decimal / 10.0);
+    result += str.back() - '0';
+    return sign * result;
 }
 
 std::unordered_map<std::string, Station> process_chunk(const char* data, size_t start, size_t end) {
@@ -83,8 +75,7 @@ std::unordered_map<std::string, Station> process_chunk(const char* data, size_t 
         std::string_view name(line.data(), delim_pos);
         std::string_view value(line.data() + delim_pos + 1, i - line_start - delim_pos - 1);
 
-        double v = parse_number(value);
-        result[std::string(name)].update(v);
+        result[std::string(name)].update(parse_number(value));
 
         line_start = i + 1;
     }
@@ -173,7 +164,13 @@ int main(int argc, const char* argv[]) {
     const char* delim = "";
     for (const auto& name : names) {
         const auto& station = stations[name];
-        std::cout << std::format("{}{}={:.1f}/{:.1f}/{:.1f}", delim, name, station.min, station.sum / station.count, station.max);
+        std::cout << std::format("{}{}={:.1f}/{:.1f}/{:.1f}",
+            delim,
+            name,
+            station.min / 10.0,
+            static_cast<double>(station.sum) / station.count / 10.0,
+            station.max / 10.0
+        );
         delim = ", ";
     }
     std::cout << "}\n\n";
