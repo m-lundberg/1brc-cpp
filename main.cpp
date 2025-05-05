@@ -63,15 +63,18 @@ static int64_t parse_number(std::string_view str) {
 std::unordered_map<std::string, Station> process_chunk(const char* data, size_t start, size_t end) {
     std::unordered_map<std::string, Station> result;
     size_t line_start = start;
+    size_t delim_pos = start;
     for (size_t i = start; i < end; ++i) {
+        if (data[i] == ';') {
+            delim_pos = i - line_start;
+            continue;
+        }
         if (data[i] != '\n') {
             continue;
         }
 
         // We have read a complete line, process it
         std::string_view line(data + line_start, i - line_start);
-
-        size_t delim_pos = line.find(';');
         std::string_view name(line.data(), delim_pos);
         std::string_view value(line.data() + delim_pos + 1, i - line_start - delim_pos - 1);
 
